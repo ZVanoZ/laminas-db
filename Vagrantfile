@@ -82,7 +82,9 @@ echo "install: mssql-tools unixodbc-dev"
 curl -s https://packages.microsoft.com/keys/microsoft.asc | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/microsoft.gpg --import
 curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | tee /etc/apt/sources.list.d/msprod.list
 apt-get -yq update
-ACCEPT_EULA=Y apt-get -yq install msodbcsql mssql-tools unixodbc-dev
+apt-get -yq install mssql-tools unixodbc-dev
+
+echo "set path to mssql-tools"
 echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> /home/vagrant/.bash_profile
 echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> /home/vagrant/.bashrc
 #------------------------------------------------------------------------------
