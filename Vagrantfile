@@ -1,7 +1,7 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-$install_software = <<SCRIPT
+$install_databases = <<SCRIPT
 
 #------------------------------------------------------------------------------
 # use "apt-cacher-ng", if you need it.
@@ -92,6 +92,25 @@ echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> /home/vagrant/.bashrc
 source /home/vagrant/.bashrc
 SCRIPT
 
+$install_composer = <<SCRIPT
+  echo "--------- TEST --------------"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get -yq update
+
+  apt-get -yq install php-cli unzip
+  php -v
+
+  apt-get -yq install php-xmlwriter php-mbstring
+
+  curl -sS https://getcomposer.org/installer -o composer-setup.php
+  php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  composer -V
+
+#  wget https://phar.phpunit.de/phpunit-latest.phar
+#  chmod +x phpunit-latest.phar
+#  ./phpunit-latest.phar --version
+SCRIPT
+
 
 $setup_vagrant_user_environment = <<SCRIPT
 if ! grep "cd /vagrant" /home/vagrant/.profile > /dev/null; then
@@ -100,21 +119,36 @@ fi
 SCRIPT
 
 Vagrant.configure(2) do |config|
-  config.vm.box = 'bento/ubuntu-20.10'
-  # "ldbt" is Laminas DB Test
-  config.vm.define "ldbt-vagrant"
-  config.vm.hostname = "ldbt-host"
-  config.vm.provider "virtualbox" do |v|
-    v.name = "ldbt-virtualbox"
-    v.memory = 4096
-    v.cpus = 2
-  end
-
-  config.vm.network "private_network", ip: "192.168.20.20"
-
-  config.vm.provision 'shell', inline: $install_software
-  config.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/mysql_fixtures.sh'
-  config.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/pgsql_fixtures.sh'
-  config.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/sqlsrv_fixtures.sh'
-  config.vm.provision 'shell', inline: $setup_vagrant_user_environment
+    config.vm.provider "libvirt"
+  
+    config.vm.define "ldbt-databases" do |configNode|
+        configNode.vm.box = 'bento/ubuntu-20.10'
+        configNode.vm.define "ldbt-databases"
+        configNode.vm.hostname = "ldbt-databases"
+        configNode.vm.provider "virtualbox" do |v|
+            v.name = "ldbt-databases"
+            v.memory = 4096
+            v.cpus = 2
+        end
+        configNode.vm.network "private_network", ip: "192.168.20.20"
+#        configNode.vm.provision 'shell', inline: $install_databases
+#        configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/mysql_fixtures.sh'
+#        configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/pgsql_fixtures.sh'
+#        configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/sqlsrv_fixtures.sh'
+#        configNode.vm.provision 'shell', inline: $setup_vagrant_user_environment
+    end
+  
+    config.vm.define "ldbt-phpunit" do |configNode|
+        configNode.vm.box = 'bento/ubuntu-20.10'
+        configNode.vm.define "ldbt-phpunit"
+        configNode.vm.hostname = "ldbt-phpunit"
+        configNode.vm.provider "virtualbox" do |v|
+            v.name = "ldbt-phpunit"
+            v.memory = 256
+            v.cpus = 1
+        end
+        configNode.vm.network "private_network", ip: "192.168.20.21"
+        config.vm.provision 'shell', inline: $install_composer
+    end
 end
+
