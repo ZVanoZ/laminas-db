@@ -1,7 +1,21 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+# DEBIAN_FRONTEND='noninteractive'
+
+APT_CACHER_NG_ENABLED='N'
+APT_CACHER_NG_HTTP='http://172.18.0.2:3142'
+APT_CACHER_NG_FTP='http://172.18.0.2:3142'
+
+MYSQL_IS_USED='T'
+MYSQL_ROOT_PASSWORD='Password123'
+
+MSSQL_IS_USED='T'
+MSSQL_SA_PASSWORD='Password123'
+
 Vagrant.configure(2) do |config|
+#    config.ssh.forward_agent = false
+#    config.ssh.pty = false
 
     #-----
     # Create virtual machine, named "ldbt-databases" ("ldbt-" Laminas DataBase Test).
@@ -19,15 +33,20 @@ Vagrant.configure(2) do |config|
 
         configNode.vm.provision 'shell', inline: $init_debian
 
+        if MSSQL_IS_USED != 'T'
+            puts 'SKIP'
+        else
+            puts 'INSTALL'
+            configNode.vm.provision 'shell', inline: $install_mssql_server_debian
+            configNode.vm.provision 'shell', inline: $install_mssql_client_debian
+            configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/sqlsrv_fixtures.sh'
+        end
+
         configNode.vm.provision 'shell', inline: $install_mysql_debian
         configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/mysql_fixtures.sh'
 
         configNode.vm.provision 'shell', inline: $install_postgresql_debian
         configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/pgsql_fixtures.sh'
-
-        configNode.vm.provision 'shell', inline: $install_mssql_server_debian
-        configNode.vm.provision 'shell', inline: $install_mssql_client_debian
-        configNode.vm.provision 'shell', privileged: false, inline: '/vagrant/.ci/sqlsrv_fixtures.sh'
 
         configNode.vm.provision 'shell', inline: $setup_vagrant_user_environment
     end
@@ -60,24 +79,39 @@ end
 $init_debian = <<SCRIPT
 
     echo '-- SCRIPT: $init_debian'
+    echo '-- APT_CACHER_NG_ENABLED='#{APT_CACHER_NG_ENABLED}
 
-#    # use "apt-cacher-ng", if you need it.
-#    # It is a good idea if you have slow (GPRS|3G) internet, and want update "Vagrantfile".
-#    # @see: homepage @link:{ http://www.unix-ag.uni-kl.de/~bloch/acng/}
-#    # @see: How to use by Docker @link:{https://docs.docker.com/samples/apt-cacher-ng/}
-#    # 1. replace the IP with yours.
-#    # 2. configure "apt-cacher-ng" to allow SSL for "microsoft" repositary
-#    # @see: How to enable SSL @link:{https://blog.packagecloud.io/eng/2015/05/05/using-apt-cacher-ng-with-ssl-tls/}
-#    #-----
-#
-#    echo "-- configure apt utilite for use 'apt-cacher-ng' proxy"
-#cat << 'EOF' > /etc/apt/apt.conf.d/02proxy
-#Acquire::http::proxy "http://172.18.0.2:3142";
-#Acquire::ftp::proxy "http://172.18.0.2:3142";
-#EOF
+    if [ "#{APT_CACHER_NG_ENABLED}" == 'Y' ]
+    then
+        echo '-- init "apt-cacher-ng" proxy'
+        # use "apt-cacher-ng", if you need it.
+        # It is a good idea if you have slow (GPRS|3G) internet, and want update "Vagrantfile".
+        # @see: homepage @link:{ http://www.unix-ag.uni-kl.de/~bloch/acng/}
+        # @see: How to use by Docker @link:{https://docs.docker.com/samples/apt-cacher-ng/}
+        # 1. replace the IP with yours.
+        # 2. configure "apt-cacher-ng" to allow SSL for "microsoft" repositary
+        # @see: How to enable SSL @link:{https://blog.packagecloud.io/eng/2015/05/05/using-apt-cacher-ng-with-ssl-tls/}
+        #-----
 
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get -yq update
+        echo "-- configure apt utilite for use 'apt-cacher-ng' proxy"
+        cat << 'EOF' > /etc/apt/apt.conf.d/02proxy
+Acquire::http::proxy "#{APT_CACHER_NG_HTTP}";
+Acquire::ftp::proxy "#{APT_CACHER_NG_FTP}";
+EOF
+        cat /etc/apt/apt.conf.d/02proxy
+    else
+        echo '-- SKIP init "apt-cacher-ng" proxy'
+    fi
+
+    ## We can add some variables into startap scripts
+    #echo "export DEBIAN_FRONTEND=noninteractive" >> /home/vagrant/.profile
+    #echo "export DEBIAN_FRONTEND=noninteractive" >> /etc/profile.d/vagrant.sh
+
+    echo "UsePam yes" >> /etc/ssh/sshd_config
+#    cat /etc/ssh/sshd_config | grep "UsePam"
+
+    export DEBIAN_FRONTEND='noninteractive'
+    apt update -yq
 
 SCRIPT
 
@@ -89,15 +123,17 @@ SCRIPT
 $install_mysql_debian = <<SCRIPT
     
     echo '-- SCRIPT: $install_mysql_debian'
+    export DEBIAN_FRONTEND='noninteractive'
 
-    debconf-set-selections <<< "mysql-server mysql-server/root_password password Password123"
-    debconf-set-selections <<< "mysql-server mysql-server/root_password_again password Password123"
+    debconf-set-selections <<< "mysql-server mysql-server/root_password password #{MYSQL_ROOT_PASSWORD}"
+    debconf-set-selections <<< "mysql-server mysql-server/root_password_again password #{MYSQL_ROOT_PASSWORD}"
+
     apt-get -yq install mysql-server
 
     echo "-- Configure MySQL"
-    # Allow external connections to MySQL as root (with password Password123)
+    # Allow external connections to MySQL as root (with password #{MYSQL_ROOT_PASSWORD})
     sed -i 's/127\.0\.0\.1/0\.0\.0\.0/g' /etc/mysql/mysql.conf.d/mysqld.cnf
-    mysql -u root -pPassword123 -e 'USE mysql; UPDATE `user` SET `Host`="%" WHERE `User`="root" AND `Host`="localhost"; DELETE FROM `user` WHERE `Host` != "%" AND `User`="root"; FLUSH PRIVILEGES;'
+    mysql -u root -p#{MYSQL_ROOT_PASSWORD} -e 'USE mysql; UPDATE `user` SET `Host`="%" WHERE `User`="root" AND `Host`="localhost"; DELETE FROM `user` WHERE `Host` != "%" AND `User`="root"; FLUSH PRIVILEGES;'
 
     echo "-- Restart MySQL"
     service mysql restart
@@ -111,6 +147,8 @@ SCRIPT
 $install_postgresql_debian = <<SCRIPT
 
     echo '-- SCRIPT: $install_postgresql_debian'
+
+    export DEBIAN_FRONTEND='noninteractive'
 
     apt-get -yq install postgresql
 
@@ -136,6 +174,10 @@ $install_mssql_server_debian = <<SCRIPT
 
     echo '-- SCRIPT: $install_mssql_server_debian'
 
+    export DEBIAN_FRONTEND='noninteractive'
+    export ACCEPT_EULA="Y"
+    export MSSQL_SA_PASSWORD=#{MSSQL_SA_PASSWORD}
+
     echo "-- add public key of microsoft repository"
     #wget -qO- https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
     curl -s https://packages.microsoft.com/keys/microsoft.asc | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/microsoft.gpg --import
@@ -143,25 +185,24 @@ $install_mssql_server_debian = <<SCRIPT
     add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/20.04/mssql-server-2019.list)"
 
     echo "-- update software index, using microsoft repository"
-    apt-get -yq update
+    apt update -yq
 
     echo '-- install "mssql-server"'
     apt-get -yq install mssql-server
 
-    echo '-- configure: mssql-server. Here we need ACCEPT_EULA="Y" and MSSQL_SA_PASSWORD="Password123"'
-    export ACCEPT_EULA="Y"
-    export MSSQL_SA_PASSWORD="Password123"
-
-    echo '-- configure "mssql-server". We use "Developer" edition - don't use it in production!'
-    ## Choose an edition of SQL Server:
-    ##   1) Evaluation (free, no production use rights, 180-day limit)
-    ##   2) Developer (free, no production use rights)
-    ##   3) Express (free)
-    ##   4) Web (PAID)
-    ##   5) Standard (PAID)
-    ##   6) Enterprise (PAID) - CPU Core utilization restricted to 20 physical/40 hyperthreaded
-    ##   7) Enterprise Core (PAID) - CPU Core utilization up to Operating System Maximum
-    ##   8) I bought a license through a retail sales channel and have a product key to enter.
+    echo '-- configure: mssql-server.'
+    echo '---- Here we need ACCEPT_EULA="Y" and MSSQL_SA_PASSWORD="#{MSSQL_SA_PASSWORD}"                      '
+    echo '---- We use "Developer" edition                                                                     '
+    echo '---- Console-UI provide this variants.                                                              '
+    echo '------ Choose an edition of SQL Server:                                                             '
+    echo '------   1) Evaluation (free, no production use rights, 180-day limit)                              '
+    echo '------   2) Developer (free, no production use rights)                                              '
+    echo '------   3) Express (free)                                                                          '
+    echo '------   4) Web (PAID)                                                                              '
+    echo '------   5) Standard (PAID)                                                                         '
+    echo '------   6) Enterprise (PAID) - CPU Core utilization restricted to 20 physical/40 hyperthreaded     '
+    echo '------   7) Enterprise Core (PAID) - CPU Core utilization up to Operating System Maximum            '
+    echo '------   8) I bought a license through a retail sales channel and have a product key to enter.      '
     printf "2\n" | /opt/mssql/bin/mssql-conf setup
 
 SCRIPT
@@ -175,6 +216,7 @@ $install_mssql_client_debian = <<SCRIPT
 
     echo '-- SCRIPT: $install_mssql_client_debian'
 
+    export DEBIAN_FRONTEND='noninteractive'
     export ACCEPT_EULA="Y"
 
     echo "-- add public key of microsoft repository"
@@ -221,6 +263,8 @@ SCRIPT
 $install_composer_debian = <<SCRIPT
 
     echo '-- SCRIPT: $install_composer_debian'
+
+    export DEBIAN_FRONTEND='noninteractive'
 
     add-apt-repository ppa:ondrej/php -y
     apt-get update

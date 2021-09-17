@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS test;
 CREATE TABLE IF NOT EXISTS test (
     id INT NOT NULL AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
@@ -11,6 +12,7 @@ INSERT INTO test (name, value) VALUES
 ('123a', 'bar'),
 ('123', 'bar');
 
+DROP TABLE IF EXISTS test_charset;
 CREATE TABLE IF NOT EXISTS test_charset (
     id INT NOT NULL AUTO_INCREMENT,
     field$ VARCHAR(255) NOT NULL,
@@ -22,6 +24,7 @@ INSERT INTO test_charset (field$, field_) VALUES
 ('foo', 'bar'),
 ('bar', 'baz');
 
+DROP TABLE IF EXISTS test_audit_trail;
 CREATE TABLE test_audit_trail (
     id INT NOT NULL AUTO_INCREMENT,
     test_id INT NOT NULL,
@@ -31,6 +34,7 @@ CREATE TABLE test_audit_trail (
     PRIMARY KEY (id)
 );
 
+DROP VIEW IF EXISTS test_view;
 CREATE VIEW test_view
 AS
 SELECT
@@ -39,6 +43,7 @@ SELECT
 FROM
     test;
 
+DROP TRIGGER IF EXISTS after_test_update;
 CREATE TRIGGER after_test_update
     AFTER UPDATE ON test
     FOR EACH ROW
